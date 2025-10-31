@@ -67,6 +67,62 @@ manage_apache2() {
 }
 
 # -----------------------------------------------
+# Nowa funkcja do klonowania repozytorium Git
+# -----------------------------------------------
+clone_repository() {
+    echo -e "\n${YELLOW}--- ETAP 2: Klonowanie Repozytorium Git ---${NC}"
+
+    # Sprawdzenie, czy Git jest zainstalowany
+    if ! command -v git &> /dev/null; then
+        echo -e "${YELLOW}Narzędzie 'git' nie zostało znalezione. Instalowanie...${NC}"
+        apt install -y git || { echo -e "${RED}BŁĄD: Nie udało się zainstalować Git.${NC}"; return 1; }
+    fi
+
+    # Pytanie o adres URL
+    read -p "Podaj pełny URL repozytorium do sklonowania (np. https://github.com/user/repo.git): " REPO_URL
+    if [ -z "$REPO_URL" ]; then
+        echo -e "${RED}Anulowano klonowanie: Adres URL repozytorium nie został podany.${NC}"
+        return 0 # Zakończenie etapu, ale bez błędu dla całego skryptu
+    fi
+
+    # Pytanie o docelową ścieżkę
+    read -p "Podaj ścieżkę docelową do sklonowania (np. /var/www/html/projekt): " TARGET_DIR
+    if [ -z "$TARGET_DIR" ]; then
+        echo -e "${RED}Anulowano klonowanie: Ścieżka docelowa nie została podana.${NC}"
+        return 0
+    fi
+
+    # Sprawdzenie, czy katalog docelowy już istnieje
+    if [ -d "$TARGET_DIR" ]; then
+        echo -e "${YELLOW}Ostrzeżenie: Katalog docelowy '${TARGET_DIR}' już istnieje i NIE jest pusty.${NC}"
+        read -r -p "Czy na pewno chcesz kontynuować i sklonować do niego? (t/n): " confirm
+        if [[ $confirm != [tT] ]]; then
+            echo -e "${RED}Anulowano klonowanie przez użytkownika.${NC}"
+            return 0
+        fi
+    fi
+
+    echo -e "${YELLOW}Klonowanie repozytorium ${REPO_URL} do ${TARGET_DIR}...${NC}"
+
+    # Wykonanie klonowania
+    if git clone "$REPO_URL" "$TARGET_DIR"; then
+        echo -e "${GREEN}Sukces: Repozytorium zostało pomyślnie sklonowane.${NC}"
+        # Ustawienie odpowiednich uprawnień dla katalogu webowego (często przydatne)
+        if [ -d "/var/www" ]; then
+            chown -R www-data:www-data "$TARGET_DIR" 2>/dev/null
+            echo -e "${YELLOW}Ustawiono właściciela katalogu na www-data (jeśli istnieje).${NC}"
+        fi
+
+    else
+        echo -e "${RED}BŁĄD: Nie udało się sklonować repozytorium. Sprawdź URL i uprawnienia SSH/HTTPS.${NC}"
+        return 1
+    fi
+
+    echo -e "${YELLOW}--- Klonowanie zakończone pomyślnie ---${NC}"
+    return 0
+}
+
+# -----------------------------------------------
 # Główna część skryptu - wywołanie funkcji
 # -----------------------------------------------
 echo "
@@ -77,10 +133,29 @@ echo "
 ##############################
 "
 manage_apache2
+APACHE_STATUS=$?
 
-# Opcjonalnie: Sprawdzenie kodu wyjścia funkcji
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}Skrypt zakończył działanie z sukcesem.${NC}"
+
+echo "
+##############################
+##
+## Klonowanie repozytorium
+##
+##############################
+"
+# Jeśli Apache2 się powiódł, przechodzimy do klonowania
+if [ $APACHE_STATUS -eq 0 ]; then
+    clone_repository
+    GIT_STATUS=$?
 else
-    echo -e "${RED}Skrypt zakończył działanie z błędami.${NC}"
+    # Jeśli instalacja Apache2 się nie powiodła, klonowanie nie ma sensu
+    echo -e "${RED}Pominięto klonowanie, ponieważ zarządzanie Apache2 zakończyło się błędem.${NC}"
+    GIT_STATUS=1
+fi
+
+# Opcjonalnie: Sprawdzenie końcowego kodu wyjścia skryptu
+if [ $APACHE_STATUS -eq 0 ] && [ $GIT_STATUS -eq 0 ]; then
+    echo -e "\n${GREEN}Skrypt zakończył działanie z sukcesem na wszystkich etapach.${NC}"
+else
+    echo -e "\n${RED}Skrypt zakończył działanie z błędami w jednym lub więcej etapach.${NC}"
 fi
