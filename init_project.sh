@@ -9,21 +9,47 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+
+read -p "Podaj nazwę aplikacja do utworzenia domeny lokalnej (np. app.local):
+"  APP_NAME
+if [ -z "$APP_NAME" ]; then
+    echo -e "${RED}Anulowano: Domena \"$APP_NAME\" nieprawidłowa.${NC}"
+    return 0 # Zakończenie etapu, ale bez błędu dla całego skryptu
+fi
+
+# ścieżka docelowa projektu
+TARGET_DIR="/var/www/localhost/htdocs/$APP_NAME.local"
+
+# Pytanie o adres URL
+read -p "Podaj pełny URL repozytorium do sklonowania (np. https://github.com/user/repo.git):
+" REPO_URL
+if [ -z "$REPO_URL" ]; then
+    echo -e "${RED}Anulowano klonowanie: Adres URL repozytorium nie został podany.${NC}"
+    return 0 # Zakończenie etapu, ale bez błędu dla całego skryptu
+fi
+
+# -----------------------------------------------
+# Instalacje
+# -----------------------------------------------
+sudo apt install composer
+sudo apt install npm
+
+
 # -----------------------------------------------
 # Funkcja do zarządzania instalacją i aktualizacją Apache2
 # -----------------------------------------------
 manage_apache2() {
     echo -e "${YELLOW}--- Rozpoczynanie operacji dla ${PACKAGE} ---${NC}"
 
-    # 1. Sprawdzenie uprawnień root
-    if [ "$(id -u)" -ne 0 ]; then
-        echo -e "${RED}BŁĄD: Ten skrypt wymaga uprawnień root (sudo).${NC}"
-        return 1 # Zwrócenie niezerowego kodu wyjścia
-    fi
+    # # 1. Sprawdzenie uprawnień root
+    # if [ "$(id -u)" -ne 0 ]; then
+    #     echo -e "${RED}BŁĄD: Ten skrypt wymaga uprawnień root (sudo).${NC}"
+    #     return 1 # Zwrócenie niezerowego kodu wyjścia
+    # fi
 
     # 2. Aktualizacja listy pakietów
     echo -e "${YELLOW}Aktualizowanie listy pakietów (apt update)...${NC}"
-    if ! apt update; then
+    if ! sudo apt update; then
         echo -e "${RED}BŁĄD: Nie udało się zaktualizować listy pakietów.${NC}"
         return 1
     fi
@@ -34,7 +60,7 @@ manage_apache2() {
         echo -e "${GREEN}Status: Pakiet '${PACKAGE}' jest już zainstalowany. Rozpoczynanie aktualizacji...${NC}"
 
         # Aktualizacja pakietu (apt upgrade)
-        if apt install --only-upgrade -y $PACKAGE; then
+        if sudo apt install --only-upgrade -y $PACKAGE; then
             echo -e "${GREEN}Sukces: Pakiet '${PACKAGE}' został pomyślnie zaktualizowany.${NC}"
 
             # Opcjonalnie: restart usługi po aktualizacji (częsta praktyka)
@@ -49,7 +75,7 @@ manage_apache2() {
         echo -e "${YELLOW}Status: Pakiet '${PACKAGE}' nie jest zainstalowany. Rozpoczynanie instalacji...${NC}"
 
         # Instalacja pakietu
-        if apt install -y $PACKAGE; then
+        if sudo apt install -y $PACKAGE; then
             echo -e "${GREEN}Sukces: Pakiet '${PACKAGE}' został pomyślnie zainstalowany.${NC}"
 
             # Włączenie i uruchomienie usługi po instalacji
@@ -78,24 +104,11 @@ clone_repository() {
         apt install -y git || { echo -e "${RED}BŁĄD: Nie udało się zainstalować Git.${NC}"; return 1; }
     fi
 
-    # Pytanie o adres URL
-    read -p "Podaj pełny URL repozytorium do sklonowania (np. https://github.com/user/repo.git): " REPO_URL
-    if [ -z "$REPO_URL" ]; then
-        echo -e "${RED}Anulowano klonowanie: Adres URL repozytorium nie został podany.${NC}"
-        return 0 # Zakończenie etapu, ale bez błędu dla całego skryptu
-    fi
-
-    # Pytanie o docelową ścieżkę
-    read -p "Podaj ścieżkę docelową do sklonowania (np. /var/www/html/projekt): " TARGET_DIR
-    if [ -z "$TARGET_DIR" ]; then
-        echo -e "${RED}Anulowano klonowanie: Ścieżka docelowa nie została podana.${NC}"
-        return 0
-    fi
-
     # Sprawdzenie, czy katalog docelowy już istnieje
     if [ -d "$TARGET_DIR" ]; then
         echo -e "${YELLOW}Ostrzeżenie: Katalog docelowy '${TARGET_DIR}' już istnieje i NIE jest pusty.${NC}"
-        read -r -p "Czy na pewno chcesz kontynuować i sklonować do niego? (t/n): " confirm
+        read -r -p "Czy na pewno chcesz kontynuować i sklonować do niego? (t/n):
+        " confirm
         if [[ $confirm != [tT] ]]; then
             echo -e "${RED}Anulowano klonowanie przez użytkownika.${NC}"
             return 0
@@ -103,6 +116,9 @@ clone_repository() {
     fi
 
     echo -e "${YELLOW}Klonowanie repozytorium ${REPO_URL} do ${TARGET_DIR}...${NC}"
+
+    # uprawnienia
+    sudo chmod -R 777 /var/www
 
     # Wykonanie klonowania
     if git clone "$REPO_URL" "$TARGET_DIR"; then
@@ -159,3 +175,20 @@ if [ $APACHE_STATUS -eq 0 ] && [ $GIT_STATUS -eq 0 ]; then
 else
     echo -e "\n${RED}Skrypt zakończył działanie z błędami w jednym lub więcej etapach.${NC}"
 fi
+
+# -----
+# W projekcie
+# -----
+
+cd $TARGET_DIR
+
+#composer
+composer install
+composer update
+
+#npm
+npm install
+
+# Uprawnienia dla www-data
+sudo chown -R www-data:www-data $TARGET_DIR/public
+sudo chmod -R 755 /var/www
