@@ -17,8 +17,11 @@ if [ -z "$APP_NAME" ]; then
     return 0 # Zakończenie etapu, ale bez błędu dla całego skryptu
 fi
 
+#domain
+DOMAIN="$APP_NAME.local";
+
 # ścieżka docelowa projektu
-TARGET_DIR="/var/www/localhost/htdocs/$APP_NAME.local"
+TARGET_DIR="/var/www/localhost/htdocs/$DOMAIN"
 
 # Pytanie o adres URL
 read -p "Podaj pełny URL repozytorium do sklonowania (np. https://github.com/user/repo.git):
@@ -27,7 +30,7 @@ if [ -z "$REPO_URL" ]; then
     echo -e "${RED}Anulowano klonowanie: Adres URL repozytorium nie został podany.${NC}"
     return 0 # Zakończenie etapu, ale bez błędu dla całego skryptu
 fi
-
+# REPO_URL="git@github.com:ferenskamil/home-budget-app.git"
 # -----------------------------------------------
 # Instalacje
 # -----------------------------------------------
@@ -192,3 +195,42 @@ npm install
 # Uprawnienia dla www-data
 sudo chown -R www-data:www-data $TARGET_DIR/public
 sudo chmod -R 755 /var/www
+
+
+
+#-------------
+# konfiguracja serwera
+#-------------
+SERV_CONF_FILENAME="$DOMAIN.conf"
+SERV_CONF_ERROR_LOG_PATH="/var/log/apache2/${DOMAIN}_error.log"
+SERV_CONF_CUSTOM_LOG_PATH="/var/log/apache2/${DOMAIN}_access.log"
+SERV_CONF_FILECONTENT=$(cat << EOF
+<VirtualHost *:80>
+    ServerAdmin mr.kaam@gmail.com
+    # Kluczowe dyrektywy:
+    ServerName $DOMAIN
+    ServerAlias www.$DOMAIN
+    DocumentRoot $TARGET_DIR/public
+
+    ErrorLog $SERV_CONF_ERROR_LOG_PATH
+    CustomLog $SERV_CONF_CUSTOM_LOG_PATH combined
+
+    # Jeśli używasz .htaccess (np. dla ładnych URL-i), dodaj:
+    <Directory $TARGET_DIR/public>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+EOF
+)
+
+# Weryfikacja (zawsze w cudzysłowach, żeby zachować formatowanie)
+echo "--- Zweryfikowana i rozwinięta treść zmiennej ---"
+echo "$SERV_CONF_FILECONTENT"
+echo "-------------------------------------------------"
+
+# Zapis do pliku
+echo "$SERV_CONF_FILECONTENT" | sudo tee /etc/apache2/sites-available/$DOMAIN.conf > /dev/null
+
+echo "✅ Plik konfiguracyjny został pomyślnie utworzony."
