@@ -166,9 +166,12 @@ configure_apache_vhost() {
     local SERV_CONF_CUSTOM_LOG_PATH="/var/log/apache2/${DOMAIN}_access.log"
     local VHOST_PATH="/etc/apache2/sites-available/$SERV_CONF_FILENAME"
 
+    # musi być zgodny z wartością "listen" w pliku \etc\apache2\ports.conf np. "listen 80"
+    local PORT="80"
+
     # Definicja pliku VirtualHost
     local SERV_CONF_FILECONTENT=$(cat << EOF
-<VirtualHost *:80>
+<VirtualHost *:$PORT>
     ServerAdmin webmaster@localhost
     ServerName $DOMAIN
     # DocumentRoot wskazuje na katalog 'public' Laravela
