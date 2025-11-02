@@ -7,7 +7,6 @@
 # Stałe
 PACKAGE="apache2"
 PHP_VERSION="8.2"
-IP_ADDRESS="127.0.0.1"
 HOSTS_FILE="/mnt/c/Windows/System32/drivers/etc/hosts"
 
 # Kolory dla lepszej czytelności
@@ -21,10 +20,29 @@ REPO_URL="${1}" # Użyj pierwszego argumentu skryptu jako domyślnego URL
 APP_NAME=""
 DOMAIN=""
 TARGET_DIR=""
+WSL_DYNAMIC_IP=""
 
 # ==============================================================================
 # FUNKCJE INICJALIZUJĄCE
 # ==============================================================================
+
+# Funkcja wyodrębniająca adres IPv4 eth0 i przypisująca go do zmiennej globalnej (lub echo)
+set_wsl_ip() {
+    #dlaczego dynamiczy ip zamiast 127.0.0.1 - był problem, że na porcie 80 ip 127.0.0.1 działała już inna usługa WSL (nie pamiętam teraz która :( )
+
+
+    # Używamy kombinacji narzędzi do wyizolowania adresu IP:
+    # 1. ip addr show eth0: Wyświetla informacje o interfejsie sieciowym.
+    # 2. grep 'inet ': Filtruje tylko linię zawierającą adres IPv4.
+    # 3. awk '{print $2}': Wybiera drugie pole ("172.26.64.237/20").
+    # 4. cut -d '/' -f 1: Usuwa maskę podsieci "/20".
+
+    # Przypisanie wyniku do zmiennej globalnej WSL_DYNAMIC_IP
+    WSL_DYNAMIC_IP=$(ip addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d '/' -f 1)
+
+    # Opcjonalne: Użycie echo, aby umożliwić przypisanie jej wyniku do innej zmiennej:
+    # echo "$WSL_DYNAMIC_IP"
+}
 
 # Weryfikacja wejścia i ustawienie zmiennych globalnych
 initial_setup() {
@@ -185,7 +203,7 @@ EOF
 configure_windows_hosts() {
     echo -e "\n${YELLOW}--- ETAP 3.5: Konfiguracja Pliku Hosts (Windows/WSL) ---${NC}"
 
-    local NEW_ENTRY="$IP_ADDRESS $DOMAIN"
+    local NEW_ENTRY="$WSL_DYNAMIC_IP $DOMAIN"
 
     if [ ! -w "$HOSTS_FILE" ]; then
         echo -e "${RED}🚨 UWAGA: Aby edytować plik hosts, wymagane są uprawnienia administratora Windows, i może pojawić się prośba o hasło.${NC}"
@@ -254,6 +272,10 @@ main() {
 ##################################################
 "
     # Faza 1: Wstępna konfiguracja i walidacja
+    # Ustaw dynamiczne ip wsl
+    set_wsl_ip || return 1
+    echo $WSL_DYNAMIC_IP;
+    exit;
     # Zakończ, jeśli konfiguracja (APP_NAME lub REPO_URL) jest nieprawidłowa
     initial_setup || return 1
 
