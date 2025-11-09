@@ -6,7 +6,7 @@
 
 # Stałe
 PACKAGE="apache2"
-PHP_VERSION="8.2"
+PHP_VERSION="8.1"
 HOSTS_FILE="/mnt/c/Windows/System32/drivers/etc/hosts"
 
 # Kolory dla lepszej czytelności
@@ -144,7 +144,7 @@ clone_repository() {
         echo -e "${YELLOW}Ostrzeżenie: Katalog '${TARGET_DIR}' już istnieje - pomijam klonowanie.${NC}"
     else
         echo -e "${YELLOW}Klonowanie ${REPO_URL} do ${TARGET_DIR}...${NC}"
-        if ! sudo git clone "$REPO_URL" "$TARGET_DIR"; then
+        if ! git clone "$REPO_URL" "$TARGET_DIR"; then
             echo -e "${RED}BŁĄD: Nie udało się sklonować repozytorium. Sprawdź URL i klucze SSH.${NC}"
             return 1
         fi
@@ -237,18 +237,27 @@ configure_laravel_project() {
     # 1. Instalacja Zależności (Composer i NPM)
     echo -e "${YELLOW}Instalacja i aktualizacja zależności Composer...${NC}"
     # Używamy --optimize-autoloader dla produkcji/deweloperki
-    composer install --no-interaction --optimize-autoloader || { echo -e "${RED}BŁĄD: Composer install zawiódł.${NC}"; return 1; }
+    sudo -u www-data composer install --no-interaction --optimize-autoloader || { echo -e "${RED}BŁĄD: Composer install zawiódł.${NC}"; return 1; }
 
     echo -e "${YELLOW}Instalacja zależności NPM...${NC}"
-    npm install || { echo -e "${RED}BŁĄD: NPM install zawiódł.${NC}"; return 1; }
+    sudo -u www-data npm install || { echo -e "${RED}BŁĄD: NPM install zawiódł.${NC}"; return 1; }
 
     # 2. Konfiguracja Środowiska (.env)
     if [ ! -f .env ]; then
-        cp .env.example .env 2>/dev/null
+        # Używamy sudo do kopiowania, aby upewnić się, że plik zostanie utworzony
+        # z odpowiednimi uprawnieniami, niezależnie od właściciela katalogu
+        sudo cp .env.example .env 2>/dev/null
         echo -e "${GREEN}Utworzono plik .env.${NC}"
     fi
+    # Po utworzeniu, upewniamy się, że www-data może go odczytać i Twój użytkownik może go edytować
+    sudo chown $USER:www-data .env
+    sudo chmod 664 .env
 
     # 3. Generowanie klucza (krytyczne)
+    # Uprawnienia wymage dla usera www-data
+    sudo chown -R $USER:www-data storage bootstrap/cache
+    sudo chmod -R g+w storage bootstrap/cache
+
     # --force jest bezpieczne, jeśli plik .env nie jest na serwerze produkcyjnym
     php artisan key:generate --force || { echo -e "${RED}BŁĄD: Nie udało się wygenerować klucza aplikacji (APP_KEY).${NC}"; }
     echo -e "${GREEN}Wygenerowano klucz aplikacji (APP_KEY).${NC}"
@@ -277,8 +286,7 @@ main() {
     # Faza 1: Wstępna konfiguracja i walidacja
     # Ustaw dynamiczne ip wsl
     set_wsl_ip || return 1
-    echo $WSL_DYNAMIC_IP;
-    exit;
+
     # Zakończ, jeśli konfiguracja (APP_NAME lub REPO_URL) jest nieprawidłowa
     initial_setup || return 1
 
